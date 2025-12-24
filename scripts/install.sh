@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="https://github.com/ErwannCharlier/FaxMeTui"
+REPO="ErwannCharlier/FaxMeTui"
 BIN="fax-erwann"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -26,9 +26,28 @@ DEST="${DEST:-$HOME/.local/bin}"
 mkdir -p "$DEST"
 
 TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
 curl -fsSL "$URL" -o "$TMP/$ASSET"
 tar -xzf "$TMP/$ASSET" -C "$TMP"
-install -m 755 "$TMP/$BIN" "$DEST/$BIN"
+
+FOUND="$(find "$TMP" -type f -name "$BIN" -maxdepth 5 2>/dev/null | head -n 1)"
+if [ -z "$FOUND" ]; then
+  FOUND="$(find "$TMP" -type f -name "$BIN" 2>/dev/null | head -n 1)"
+fi
+
+if [ -z "$FOUND" ]; then
+  echo "binary not found in archive: $ASSET" >&2
+  exit 1
+fi
+
+install -m 755 "$FOUND" "$DEST/$BIN"
 
 echo "installed: $DEST/$BIN"
 echo "run: $BIN"
+echo ""
+if ! command -v "$BIN" >/dev/null 2>&1; then
+  echo "If command not found, add to PATH:"
+  echo "  echo 'export PATH=\"$DEST:\$PATH\"' >> ~/.zshrc"
+  echo "  source ~/.zshrc"
+fi
