@@ -1,34 +1,24 @@
-#!/bin/sh
-set -eu
+$ErrorActionPreference = "Stop"
 
-REPO="https://github.com/ErwannCharlier/FaxMeTui"
-BIN="fax-erwann"
+$Repo = "ErwannCharlier/FaxMeTui"
+$Bin = "fax-erwann.exe"
 
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-ARCH="$(uname -m)"
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd64" }
+$asset = "fax-erwann_windows_$arch.zip"
+$url = "https://github.com/$Repo/releases/latest/download/$asset"
 
-case "$ARCH" in
-  x86_64|amd64) ARCH="amd64" ;;
-  arm64|aarch64) ARCH="arm64" ;;
-  *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
-esac
+$root = Join-Path $env:LOCALAPPDATA "fax-erwann"
+$bindir = Join-Path $root "bin"
+New-Item -Force -ItemType Directory $bindir | Out-Null
 
-case "$OS" in
-  darwin) OS="darwin" ;;
-  linux) OS="linux" ;;
-  *) echo "unsupported os: $OS" >&2; exit 1 ;;
-esac
+$tmp = New-TemporaryFile
+Invoke-WebRequest $url -OutFile $tmp
+Expand-Archive -Force $tmp $bindir
 
-ASSET="${BIN}_${OS}_${ARCH}.tar.gz"
-URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+$path = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($path -notlike "*$bindir*") {
+  [Environment]::SetEnvironmentVariable("Path", "$path;$bindir", "User")
+}
 
-DEST="${DEST:-$HOME/.local/bin}"
-mkdir -p "$DEST"
-
-TMP="$(mktemp -d)"
-curl -fsSL "$URL" -o "$TMP/$ASSET"
-tar -xzf "$TMP/$ASSET" -C "$TMP"
-install -m 755 "$TMP/$BIN" "$DEST/$BIN"
-
-echo "installed: $DEST/$BIN"
-echo "run: $BIN"
+Write-Host "installed: $bindir\$Bin"
+Write-Host "open a new terminal, then run: fax-erwann"
