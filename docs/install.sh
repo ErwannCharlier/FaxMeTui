@@ -15,14 +15,21 @@ esac
 
 case "$OS" in
   darwin) OS="darwin" ;;
-  linux) OS="linux" ;;
+  linux)  OS="linux" ;;
   *) echo "unsupported os: $OS" >&2; exit 1 ;;
 esac
 
 ASSET="${BIN}_${OS}_${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 
-DEST="${DEST:-$HOME/.local/bin}"
+if [ -z "${DEST+x}" ]; then
+  if [ "$(id -u)" -eq 0 ] || [ -w "/usr/local/bin" ] 2>/dev/null; then
+    DEST="/usr/local/bin"
+  else
+    DEST="$HOME/.local/bin"
+  fi
+fi
+
 mkdir -p "$DEST"
 
 TMP="$(mktemp -d)"
@@ -31,7 +38,7 @@ trap 'rm -rf "$TMP"' EXIT
 curl -fsSL "$URL" -o "$TMP/$ASSET"
 tar -xzf "$TMP/$ASSET" -C "$TMP"
 
-FOUND="$(find "$TMP" -type f -name "$BIN" -maxdepth 5 2>/dev/null | head -n 1)"
+FOUND="$(find "$TMP" -maxdepth 5 -type f -name "$BIN" 2>/dev/null | head -n 1)"
 if [ -z "$FOUND" ]; then
   FOUND="$(find "$TMP" -type f -name "$BIN" 2>/dev/null | head -n 1)"
 fi
@@ -43,11 +50,30 @@ fi
 
 install -m 755 "$FOUND" "$DEST/$BIN"
 
-echo "installed: $DEST/$BIN"
-echo "run: $BIN"
-echo ""
-if ! command -v "$BIN" >/dev/null 2>&1; then
-  echo "If command not found, add to PATH:"
-  echo "  echo 'export PATH=\"$DEST:\$PATH\"' >> ~/.zshrc"
-  echo "  source ~/.zshrc"
+add_path_line() {
+  file="$1"
+  line="$2"
+  mkdir -p "$(dirname "$file")" 2>/dev/null || true
+  touch "$file"
+  grep -qsF "$line" "$file" || printf '\n%s\n' "$line" >> "$file"
+}
+
+if [ "$DEST" = "$HOME/.local/bin" ]; then
+  PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+else
+  PATH_LINE="export PATH=\"$DEST:\$PATH\""
 fi
+
+case ":$PATH:" in
+  *":$DEST:"*) : ;;
+  *)
+    add_path_line "$HOME/.profile" "$PATH_LINE"
+    [ -f "$HOME/.zshrc" ]  && add_path_line "$HOME/.zshrc"  "$PATH_LINE" || true
+    [ -f "$HOME/.bashrc" ] && add_path_line "$HOME/.bashrc" "$PATH_LINE" || true
+  ;;
+esac
+
+echo "installed: $DEST/$BIN"
+echo "running now..."
+echo "note: for next terminals, 'fax-erwann' will work (or run: . ~/.profile)"
+exec "$DEST/$BIN"
